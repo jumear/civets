@@ -6,14 +6,15 @@
 <meta name="description" content="Map of Texas Covid-19 Time Series Data" />
 <title>Map of Texas Covid-19 Time Series Data</title>
 <style>
-#seldiv { width:300px; position:absolute; top:0px; left:0px; padding:10px; z-index:1002; background:whitesmoke; }
-#datadiv { width:300px; position:absolute; top:0px; left:0px; padding:10px; overflow:scroll; z-index:1001; background:whitesmoke; }
-#data { width:100%; }
+#seldiv { width:320px; position:absolute; top:0px; left:0px; padding:10px; z-index:1002; background:whitesmoke; }
+#datadiv { width:320px; position:absolute; top:0px; left:0px; padding:10px; overflow:scroll; z-index:1001; background:whitesmoke; }
+#data { width:100%; text-align:left; }
 #mapdiv { height:100vh; width:1000px; position:absolute; top:0px; left:300px; }
 #title { width:150px; position:absolute; top:10px; left:300px; z-index:1000; background:rgba(200,200,200,0.7); text-align:center; }
 #titledate { font-size:20px; font-weight:600; }
 .tar { text-align:right; }
 .tac { text-align:center; }
+.tal { text-align:left; }
 body { margin:0px; border:0px; background:whitesmoke; font:10pt Sans-serif; }
 h2 { margin:0px; border:0px; font-size:12pt; }
 form { font-size:10pt; margin:10px 0px; }
@@ -51,15 +52,11 @@ Dataset:
       <option value='per'>(per 1000)</option>
       <!--//<option value='psm'>(per sq mi)</option>//-->
       <option value='lin'>(absolute)</option>
-      <option value='log'>(abs log)</option>
+      <!--//<option value='psm'><option value='log'>(abs log)</option>//-->
       <option value='pct'>(% of TX)</option>
    </select><br />
 Data Point: 
-   <a title="first" href="javascript:fchangept(-2);">⏮︎</a>
-   <a title="previous" href="javascript:fchangept(-1);">⏴︎</a>
-   <select name="datapt" id="datapt" onchange="fdatapt();"></select>
-   <a title="next" href="javascript:fchangept(1);">⏵︎</a>
-   <a title="last" href="javascript:fchangept(2);">⏭︎</a><br />
+   <a title="first" href="javascript:fchangept(-2);">⏮</a><a title="previous" href="javascript:fchangept(-1);">◀</a><select name="datapt" id="datapt" onchange="fdatapt();"></select><a title="next" href="javascript:fchangept(1);">▶</a><a title="last" href="javascript:fchangept(2);">⏭</a><br />
 Animate: <input type="checkbox" name="animate" id="animate" checked onchange="fdatapt();" />
 Loop: <input type="checkbox" name="animloop" id="animloop"  onchange="fdatapt();" />
 Speed:
@@ -143,7 +140,8 @@ function fsortbase(columnNo,asc=true,comma=false,percent=false) {
          val_a = fnopercent(val_a)==='N/A'?-1:fnopercent(val_a);
          val_b = fnopercent(val_b)==='N/A'?-1:fnopercent(val_b);
       };
-      return asc?(val_a-val_b):(val_b-val_a);
+      if (isNaN(val_a-val_b)) { return (asc?1:-1) * (val_a>val_b?1:val_a<val_b?-1:0); }
+      else { return asc?(val_a-val_b):(val_b-val_a); };      
    });
    ary.forEach(function(ele) {
       tb.appendChild(ele);
@@ -237,7 +235,7 @@ function fdatatable(odata) {
          var hrow = faddelem('tr',thead);
          faddelem('th',hrow,null,'datahdr_colorbox','');
          fdatahdrwsort(hrow,null,'datahdr_county','County');
-         fdatahdrwsort(hrow,'tar','datahdr_value',fisdataset('cf')?'Deaths':'Cases',true);
+         fdatahdrwsort(hrow,'tar','datahdr_value',county.valueshortnm,true);
          fdatahdrwsort(hrow,'tar','datahdr_per','Per 1000',true);
          fdatahdrwsort(hrow,'tar','datahdr_pct','% of TX',false,true);
       };
@@ -250,7 +248,7 @@ function fdatatable(odata) {
    // do an initial sort based on map type
    if (fisdataviz('per')) { fsortcolumn(document.getElementById('datahdr_per'),true,false,false); }
    else if (fisdataviz('lin')) { fsortcolumn(document.getElementById('datahdr_value'),true,false,false); }
-   else if (fisdataviz('log')) { fsortcolumn(document.getElementById('datahdr_value'),true,false,false); }
+//   else if (fisdataviz('log')) { fsortcolumn(document.getElementById('datahdr_value'),true,false,false); }
    else if (fisdataviz('pct')) { fsortcolumn(document.getElementById('datahdr_pct'),false,true,false); }
    else { fsortcolumn(document.getElementById('datahdr_county')); };
 };
@@ -282,38 +280,56 @@ var polygonstyle = {
       fillOpacity: 0.55
    }
 };
+
+function fhslscale(h,s,l,factor,shift,bidirectional=false) {
+   if (bidirectional) {
+      return (factor>0)?fhsl(h-fscale(factor,shift),s,l)
+         :(factor<0)?fhsl(h+fscale(-factor,shift),s,l)
+         :'darkgray'
+   }
+   return fhsl(h-fscale(factor,shift),s,l);
+};
+
+
 function fpolygonstyle(feature) {
    let pstyle = polygonstyle.default;
    let ppop = feature.properties.pop;
    let pvalue = feature.properties.value;
    let pper = pvalue/ppop*1000;
    let pttl = feature.properties.valuettl;
-   let ppct = (pttl) ? pvalue/pttl : -1;
+   let ppct = pvalue/pttl;
 //   let pareami = feature.properties.ALAND/sqm_per_sqmi;
 
    pstyle.fillColor = (pvalue==null) ? 'none'
       :(pvalue===0)?'darkgray'
       :fisdataviz('per')?
-         (fisdataset('cc')?fhsl( 60-fscale((pper/30),120), 100, 50 )
-         :fisdataset('ac')?fhsl( 60-fscale((pper/30),120), 100, 50 )
-         :fisdataset('cf')?fhsl( 60-fscale((pper),120), 100, 50 )
+         (fisdataset('cc')?fhslscale(60,100,50,(pper/30),120)
+         :fisdataset('ac')?fhslscale(60,100,50,(pper/30),120)
+         :fisdataset('cf')?fhslscale(60,100,50,pper,120)
+         :fisdataset('cc_d')?fhslscale(60,100,50,(pper/5),120)
+         :fisdataset('ac_d')?fhslscale(60,100,50,(pper/2),120)
+         :fisdataset('cf_d')?fhslscale(60,100,50,pper*2,120)
          :'purple')
-//      :fisdataviz('psm')?
-//         (fisdataset('cc')?fhsl( 60-fscale((pvalue/pareami/10),120), 100, 50 )
-//         :fisdataset('ac')?fhsl( 60-fscale((pvalue/pareami/10),120), 100, 50 )
-//         :fisdataset('cf')?fhsl( 60-fscale((pvalue/pareami/10),120), 100, 50 )
-//         :'purple')
+//      :fisdataviz('psm')? // pvalue/pareami
       :fisdataviz('lin')?
-         (fisdataset('cc')?fhsl( 60-fscale((pvalue/15000),120), 100, 50 )
-         :fisdataset('ac')?fhsl( 60-fscale((pvalue/15000),120), 100, 50 )
-         :fisdataset('cf')?fhsl( 60-fscale((pvalue/250),120), 100, 50 )
+         (fisdataset('cc')?fhslscale(60,100,50,(pvalue/15000),120)
+         :fisdataset('ac')?fhslscale(60,100,50,(pvalue/15000),120)
+         :fisdataset('cf')?fhslscale(60,100,50,(pvalue/250),120)
+         :fisdataset('cc_d')?fhslscale(60,100,50,(pvalue/500),120)
+         :fisdataset('ac_d')?fhslscale(60,100,50,(pvalue/500),120)
+         :fisdataset('cf_d')?fhslscale(60,100,50,(pvalue/20),120)
          :'purple')
+/*
       :fisdataviz('log')?
-         (fisdataset('cc')?fhsl( 60-fscale((flogbase(pvalue,10)/5),120), 100, 50 )
-         :fisdataset('ac')?fhsl( 60-fscale((flogbase(pvalue,10)/5),120), 100, 50 )
-         :fisdataset('cf')?fhsl( 60-fscale((flogbase(pvalue,10)/4),120), 100, 50 )
+         (fisdataset('cc')?fhslscale(60,100,50,(flogbase(pvalue,10)/5),120) // fhsl( 60-fscale((flogbase(pvalue,10)/5),120), 100, 50 )
+         :fisdataset('ac')?fhslscale(60,100,50,(flogbase(pvalue,10)/5),120) // fhsl( 60-fscale((flogbase(pvalue,10)/5),120), 100, 50 )
+         :fisdataset('cf')?fhslscale(60,100,50,(flogbase(pvalue,10)/4),120) //fhsl( 60-fscale((flogbase(pvalue,10)/4),120), 100, 50 )
+         :fisdataset('cc_d')?fhslscale(60,100,50,(flogbase(pvalue,10)/3),120) // fhsl( 60-fscale((flogbase(pvalue,10)/5),120), 100, 50 )
+         :fisdataset('ac_d')?fhslscale(60,100,50,(flogbase(pvalue,10)/3),120) // fhsl( 60-fscale((flogbase(pvalue,10)/5),120), 100, 50 )
+         :fisdataset('cf_d')?fhslscale(60,100,50,(flogbase(pvalue,10)/2),120) //fhsl( 60-fscale((flogbase(pvalue,10)/4),120), 100, 50 )
          :'purple')
-      :fisdataviz('pct')?( (ppct<0)?'darkgray':fhsl( 60-fscale((ppct*3),120), 100, 50 ) )
+*/
+      :fisdataviz('pct')?fhslscale(60,100,50,(ppct*3),120,true)
       :'purple';
    return pstyle;
 };
@@ -329,7 +345,7 @@ function foneachfeature(feature,layer) {
       layer._polygonId = fp.NAME;
       //layer.bindTooltip(fp.NAME);
       popupary.push({label:fp.NAME+' County'});
-      popupary.push({label:fp.valuename+' as of '+fp.date});
+      popupary.push({label:fp.valuename+(fp.valuename.search('&Delta;')<0?' as of ':' from ')+fp.date});
       popupary.push({label:fp.valueshortnm,value:fcomnum(fp.value)});
       popupary.push({label:'Per 1000',value:fround(fp.value/fp.pop*1000,6)});
       popupary.push({label:'Population',value:fcomnum(fp.pop)});
@@ -377,6 +393,28 @@ var aryset = [
    {name:'Cumulative Cases',code:'cc',dataset:cumulative_cases,shortname:'Cases',selected:false},
    {name:'Cumulative Fatalities',code:'cf',dataset:cumulative_fatalities,shortname:'Deaths',selected:false},
 ];
+function faddchangeset() {
+   const l = aryset.length;
+   for (i=0;i<l;i++) {
+      var d = {}; // destination
+      var s = aryset[i].dataset; // source
+      for (p in s) {
+         d[p]=[];
+         for (j=1;j<s[p].length;j++) {
+            if (p==='dates') { d[p].push( s[p][j-1]+' to '+s[p][j] ) }
+            else { d[p].push( s[p][j]-s[p][j-1] ) };
+         };
+      };
+      aryset.push({
+        name:aryset[i].name+' &Delta;',
+        code:aryset[i].code+'_d',
+        dataset:d,
+        shortname:aryset[i].shortname+' &Delta;',
+        selected:false,
+      })
+   };
+};
+
 function fgetdataset() { return document.getElementById('dataset').value; };
 function fgetdatasetname() { return document.getElementById('dataset').options.item(document.getElementById('dataset').options.selectedIndex).innerText; };
 function fgetdatasetobj() {
@@ -506,6 +544,7 @@ fmapresize();
 var animthread = 0;
 mainmap.fitBounds([[36.500704,-93.508039],[25.837164,-106.645646]]);
 fgetpop(cb_2018_TX_county_500k.features,population);
+faddchangeset();
 fdatasetlist();
 fdataset();
 
