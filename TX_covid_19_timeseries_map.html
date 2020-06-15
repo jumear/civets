@@ -372,13 +372,13 @@ function foneachfeature(feature,layer) {
       layer._polygonId = fp.NAME;
       //layer.bindTooltip(fp.NAME);
       popupary.push({label:fp.NAME+' County'});
+      popupary.push({label:fp.valuename+(fp.valuename.search('&Delta;')<0?' as of ':' from ')+fp.date});
       if (fisdataset('cfr')) {
+         popupary.push({label:fp.valueshortnm,value:fround(fp.value/fp.valuettl,6)});
          popupary.push({label:'Fatalities',value:fcomnum(fp.value)});
          popupary.push({label:'Cases',value:fcomnum(fp.valuettl)});
-         popupary.push({label:fp.valuename,value:fround(fp.value/fp.valuettl,6)});
       }      
       else {
-         popupary.push({label:fp.valuename+(fp.valuename.search('&Delta;')<0?' as of ':' from ')+fp.date});
          popupary.push({label:fp.valueshortnm,value:fcomnum(fp.value)});
          popupary.push({label:'Per 1000',value:fround(fp.value/fp.pop*1000,6)});
          popupary.push({label:'Population',value:fcomnum(fp.pop)});
