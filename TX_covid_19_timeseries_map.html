@@ -248,7 +248,7 @@ function fdatatable(odata) {
             fdatahdrwsort(hrow,'tar','datahdr_c','Cases',true);
             fdatahdrwsort(hrow,'tar','datahdr_value',county.valueshortnm,true);
          }
-         if (fisdataset('acc')) {
+         else if (fisdataset('acc')) {
             fdatahdrwsort(hrow,'tar','datahdr_a','Active',true);
             fdatahdrwsort(hrow,'tar','datahdr_c','Cumulative',true);
             fdatahdrwsort(hrow,'tar','datahdr_value',county.valueshortnm,true);
