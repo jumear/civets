@@ -146,7 +146,9 @@ function fsortbase(columnNo,asc=true,comma=false,percent=false) {
          val_a = fnopercent(val_a)==='N/A'?-1:fnopercent(val_a);
          val_b = fnopercent(val_b)==='N/A'?-1:fnopercent(val_b);
       };
-      if (isNaN(val_a-val_b)) { return (asc?1:-1) * (val_a>val_b?1:val_a<val_b?-1:0); }
+      if (!isNaN(val_a)&&val_b==='NaN') { return asc?1:-1; }
+      else if (!isNaN(val_b)&&val_a==='NaN') { return asc?-1:1; }
+      else if (isNaN(val_a-val_b)) { return (asc?1:-1) * (val_a>val_b?1:val_a<val_b?-1:0); }
       else { return asc?(val_a-val_b):(val_b-val_a); };      
    });
    ary.forEach(function(ele) {
@@ -241,18 +243,35 @@ function fdatatable(odata) {
          var hrow = faddelem('tr',thead);
          faddelem('th',hrow,null,'datahdr_colorbox','');
          fdatahdrwsort(hrow,null,'datahdr_county','County');
-         fdatahdrwsort(hrow,'tar','datahdr_value',county.valueshortnm,true);
-         fdatahdrwsort(hrow,'tar','datahdr_per','Per 1000',true);
-         fdatahdrwsort(hrow,'tar','datahdr_pct','% of TX',false,true);
+         if (fisdataset('cfr')) {
+            fdatahdrwsort(hrow,'tar','datahdr_f','Fatalities',true);
+            fdatahdrwsort(hrow,'tar','datahdr_c','Cases',true);
+            fdatahdrwsort(hrow,'tar','datahdr_value',county.valueshortnm,true);
+         }
+         else {
+            fdatahdrwsort(hrow,'tar','datahdr_value',county.valueshortnm,true);
+            fdatahdrwsort(hrow,'tar','datahdr_per','Per 1000',true);
+            fdatahdrwsort(hrow,'tar','datahdr_pct','% of TX',false,true);
+         };
       };
-      fdatatablerow(tbody,pstyle,county.NAME,[
-         fcomnum(county.value),
-         fround(county.value/county.pop*1000,6),
-         fround(county.value/county.valuettl*100,3),
-      ]);
+      if (fisdataset('cfr')) {
+         fdatatablerow(tbody,pstyle,county.NAME,[
+            fcomnum(county.value),
+            fcomnum(county.valuettl),
+            fround(county.value/county.valuettl,6),
+         ]);
+      } 
+      else {
+         fdatatablerow(tbody,pstyle,county.NAME,[
+            fcomnum(county.value),
+            fround(county.value/county.pop*1000,6),
+            fround(county.value/county.valuettl*100,3),
+         ]);
+      };
    };
    // do an initial sort based on map type
-   if (fisdataviz('per')) { fsortcolumn(document.getElementById('datahdr_per'),true,false,false); }
+   if (fisdataset('cfr')) { fsortcolumn(document.getElementById('datahdr_value'),false,true,false); }
+   else if (fisdataviz('per')) { fsortcolumn(document.getElementById('datahdr_per'),true,false,false); }
    else if (fisdataviz('lin')) { fsortcolumn(document.getElementById('datahdr_value'),true,false,false); }
 //   else if (fisdataviz('log')) { fsortcolumn(document.getElementById('datahdr_value'),true,false,false); }
    else if (fisdataviz('pct')) { fsortcolumn(document.getElementById('datahdr_pct'),false,true,false); }
@@ -299,14 +318,16 @@ function fhslscale(h,s,l,factor,shift,bidirectional=false) {
 
 function fpolygonstyle(feature) {
    let pstyle = polygonstyle.default;
+//   let pareami = feature.properties.ALAND/sqm_per_sqmi;
    let ppop = feature.properties.pop;
    let pvalue = feature.properties.value;
    let pper = pvalue/ppop*1000;
    let pttl = feature.properties.valuettl;
    let ppct = pvalue/pttl;
-//   let pareami = feature.properties.ALAND/sqm_per_sqmi;
 
    pstyle.fillColor = (pvalue==null) ? 'none'
+      :(isNaN(ppct))?'darkgray'
+      :fisdataset('cfr')?fhslscale(60,100,50,(ppct*5),120)
       :(pvalue===0)?'darkgray'
       :fisdataviz('per')?
          (fisdataset('cc')?fhslscale(60,100,50,(pper/30),120)
@@ -351,12 +372,19 @@ function foneachfeature(feature,layer) {
       layer._polygonId = fp.NAME;
       //layer.bindTooltip(fp.NAME);
       popupary.push({label:fp.NAME+' County'});
-      popupary.push({label:fp.valuename+(fp.valuename.search('&Delta;')<0?' as of ':' from ')+fp.date});
-      popupary.push({label:fp.valueshortnm,value:fcomnum(fp.value)});
-      popupary.push({label:'Per 1000',value:fround(fp.value/fp.pop*1000,6)});
-      popupary.push({label:'Population',value:fcomnum(fp.pop)});
-      popupary.push({label:'% of TX',value:fround(fp.value/fp.valuettl*100,3)});
-      popupary.push({label:'Texas '+fp.valueshortnm,value:fcomnum(fp.valuettl)});
+      if (fisdataset('cfr')) {
+         popupary.push({label:'Fatalities',value:fcomnum(fp.value)});
+         popupary.push({label:'Cases',value:fcomnum(fp.valuettl)});
+         popupary.push({label:fp.valuename,value:fround(fp.value/fp.valuettl,6)});
+      }      
+      else {
+         popupary.push({label:fp.valuename+(fp.valuename.search('&Delta;')<0?' as of ':' from ')+fp.date});
+         popupary.push({label:fp.valueshortnm,value:fcomnum(fp.value)});
+         popupary.push({label:'Per 1000',value:fround(fp.value/fp.pop*1000,6)});
+         popupary.push({label:'Population',value:fcomnum(fp.pop)});
+         popupary.push({label:'% of TX',value:fround(fp.value/fp.valuettl*100,3)});
+         popupary.push({label:'Texas '+fp.valueshortnm,value:fcomnum(fp.valuettl)});
+      };
    };
    for (i=0; i<popupary.length; i++) {
       popupstr += (i>0?'<br />':'')+popupary[i].label+((popupary[i].value!=null)?': '+popupary[i].value:'');
@@ -380,11 +408,17 @@ function fbinddata(gobj,dobj,idx) {
       delete gobj[i].properties.count;
       delete gobj[i].properties.ttlcount;
       gobj[i].properties['date']=dset.dates[idx];
-      gobj[i].properties['value']=dset[gobj[i].properties.NAME][idx];
-      gobj[i].properties['valuettl']=dset.totals[idx];
       gobj[i].properties['valuename']=dobj.name;
       gobj[i].properties['valueshortnm']=dobj.shortname;
-   }
+      if (fisdataset('cfr')) {
+         gobj[i].properties['value']=dset[gobj[i].properties.NAME][idx][0];
+         gobj[i].properties['valuettl']=dset[gobj[i].properties.NAME][idx][1];
+      }
+      else {
+         gobj[i].properties['value']=dset[gobj[i].properties.NAME][idx];
+         gobj[i].properties['valuettl']=dset.totals[idx];
+      };
+   };
    return gobj;
 };
 function fgetpop(gobj,dobj) {
@@ -395,9 +429,9 @@ function fgetpop(gobj,dobj) {
    return gobj;
 };
 var aryset = [
-   {name:'Active Cases',code:'ac',dataset:active_cases,shortname:'Cases',selected:true},
-   {name:'Cumulative Cases',code:'cc',dataset:cumulative_cases,shortname:'Cases',selected:false},
-   {name:'Cumulative Fatalities',code:'cf',dataset:cumulative_fatalities,shortname:'Deaths',selected:false},
+   {name:'Active Cases',code:'ac',dataset:active_cases,shortname:'Cases',selected:true,vizoptions:true},
+   {name:'Cumulative Cases',code:'cc',dataset:cumulative_cases,shortname:'Cases',selected:false,vizoptions:true},
+   {name:'Cumulative Fatalities',code:'cf',dataset:cumulative_fatalities,shortname:'Deaths',selected:false,vizoptions:true},
 ];
 function faddchangeset() {
    const l = aryset.length;
@@ -412,19 +446,52 @@ function faddchangeset() {
          };
       };
       aryset.push({
-        name:aryset[i].name+' &Delta;',
-        code:aryset[i].code+'_d',
-        dataset:d,
-        shortname:aryset[i].shortname+' &Delta;',
-        selected:false,
-      })
+         name:aryset[i].name+' &Delta;',
+         code:aryset[i].code+'_d',
+          dataset:d,
+         shortname:aryset[i].shortname+' &Delta;',
+         selected:false,
+         vizoptions:aryset[i].vizoptions,
+      });
+   };
+};
+function faddcfrset() {
+   f = fgetdatasetobj('cf').dataset;
+   c = fgetdatasetobj('cc').dataset;
+   var cis=0;
+   var a = {};
+   for (fi=0;fi<f.dates.length;fi++) {
+      var d = f.dates[fi];
+      for (ci=(cis||0);ci<c.dates.length;ci++) {
+         if (d===c.dates[ci]) {
+            if (cis===0) { // first time
+               for (p in f) { a[p] = []; };
+            };
+            for (q in f) {
+               if (q==='dates') { a[q].push(f[q][fi]); }
+               else { a[q].push([f[q][fi],c[q][ci]]); };
+            };
+            cis=ci+1;
+            break;
+         };
+      };
+   };
+   if (a.dates) {
+      aryset.push({
+         name:'Case Fatality Rate',
+         code:'cfr',
+         dataset:a,
+         shortname:'CFR',
+         selected:false,
+         vizoptions:false,
+      });
    };
 };
 
 function fgetdataset() { return document.getElementById('dataset').value; };
 function fgetdatasetname() { return document.getElementById('dataset').options.item(document.getElementById('dataset').options.selectedIndex).innerText; };
-function fgetdatasetobj() {
-   var obj = aryset.find(o=>o.code===fgetdataset());
+function fgetdatasetobj(code=fgetdataset()) {
+   var obj = aryset.find(o=>o.code===code);
    return obj;
 };
 function fgetdataviz() { return document.getElementById('dataviz').value; };
@@ -460,7 +527,7 @@ function fdelay(time,value) {
 
 async function fdatapt(idx=fgetdatapt()) {
    animthread++;
-   document.getElementById("title").innerHTML = '<span id="titledate">'+fgetdataptvalue()+'</span><br />'+fgetdatasetname()+'<br />'+fgetdatavizname();
+   document.getElementById("title").innerHTML = '<span id="titledate">'+fgetdataptvalue()+'</span><br />'+fgetdatasetname()+(fisdataset('cfr')?'':('<br />'+fgetdatavizname()));
    var set = fgetdatasetobj();
    var odata = fbinddata(cb_2018_TX_county_500k.features,set,idx);
    if (ldatasetlayer) {
@@ -498,7 +565,9 @@ function fdataset() {
       n.innerHTML = set.dataset.dates[i];
       list.appendChild(n);
    };
-   fcalcttl(set.dataset);
+   //fcalcttl(set.dataset);
+   var viz = document.getElementById("dataviz");
+   viz.style.visibility = fgetdatasetobj().vizoptions?'visible':'hidden';
    fdatapt();
 };
 function fdatasetlist() {
@@ -550,7 +619,9 @@ fmapresize();
 var animthread = 0;
 mainmap.fitBounds([[36.500704,-93.508039],[25.837164,-106.645646]]);
 fgetpop(cb_2018_TX_county_500k.features,population);
+for (a=0;a<aryset.length;a++) { fcalcttl(aryset[a].dataset); };
 faddchangeset();
+faddcfrset();
 fdatasetlist();
 fdataset();
 
