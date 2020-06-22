@@ -44,7 +44,7 @@ function fmapresize() {
 
 <body onresize="fmapresize();">
 <div id="seldiv">
-<h2>Texas Covid-19 Time Series Data Map (in Development)</h2>
+<h2>Texas Covid-19 Time Series Data Map <span id="lastupdate"></span></h2>
 <form>
 Dataset: 
    <select name="dataset" id="dataset" onchange="fdataset();"></select>
@@ -626,6 +626,8 @@ function fchangept(option) {
    fdatapt();
 };
 
+var luspan = document.getElementById('lastupdate');
+luspan.innerText = '(last update: '+(lastupdate||'unknown')+')'
 fmapresize();
 var animthread = 0;
 mainmap.fitBounds([[36.500704,-93.508039],[25.837164,-106.645646]]);
