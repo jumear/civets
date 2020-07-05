@@ -320,7 +320,6 @@ function fhslscale(h,s,l,factor,shift,bidirectional=false) {
    return fhsl(h-fscale(factor,shift),s,l);
 };
 
-
 function fpolygonstyle(feature) {
    let pstyle = polygonstyle.default;
 //   let pareami = feature.properties.ALAND/sqm_per_sqmi;
@@ -345,11 +344,11 @@ function fpolygonstyle(feature) {
          :'purple')
 //      :fisdataviz('psm')? // pvalue/pareami
       :fisdataviz('lin')?
-         (fisdataset('cc')?fhslscale(60,100,50,(pvalue/15000),120)
-         :fisdataset('ac')?fhslscale(60,100,50,(pvalue/15000),120)
-         :fisdataset('cf')?fhslscale(60,100,50,(pvalue/250),120)
-         :fisdataset('cc_d')?fhslscale(60,100,50,(pvalue/500),120)
-         :fisdataset('ac_d')?fhslscale(60,100,50,(pvalue/500),120)
+         (fisdataset('cc')?fhslscale(60,100,50,(pvalue/30000),120)
+         :fisdataset('ac')?fhslscale(60,100,50,(pvalue/20000),120)
+         :fisdataset('cf')?fhslscale(60,100,50,(pvalue/400),120)
+         :fisdataset('cc_d')?fhslscale(60,100,50,(pvalue/1500),120)
+         :fisdataset('ac_d')?fhslscale(60,100,50,(pvalue/1500),120)
          :fisdataset('cf_d')?fhslscale(60,100,50,(pvalue/20),120)
          :'purple')
 /*
