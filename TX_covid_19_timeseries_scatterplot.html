@@ -1,0 +1,666 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8" />
+<meta name="description" content="Scatterplot of Texas Covid-19 Time Series Data" />
+<title>Scatterplot of Texas Covid-19 Time Series Data</title>
+<style>
+#seldiv { width:320px; position:absolute; top:0px; left:0px; padding:10px; z-index:1002; background:whitesmoke; }
+#datadiv { width:320px; position:absolute; top:0px; left:0px; padding:10px; overflow:scroll; z-index:1001; background:whitesmoke; }
+#data { width:100%; text-align:left; }
+#svgdiv { height:100vh; width:1000px; position:absolute; top:0px; left:300px; }
+#title { width:150px; position:absolute; top:10px; left:300px; z-index:1000; background:rgba(200,200,200,0.7); text-align:center; }
+#titledate { font-size:20px; font-weight:600; }
+.tar { text-align:right; }
+.tac { text-align:center; }
+.tal { text-align:left; }
+body { margin:0px; border:0px; background:whitesmoke; font:10pt Sans-serif; }
+h2 { margin:0px; border:0px; font-size:12pt; }
+form { font-size:10pt; margin:10px 0px; }
+td { opacity:1; }
+a { text-decoration:none; }
+.label_hide { visibility:hidden; }
+.label_sel { visibility:visible; font-weight:800; }
+.label { visibility:visible; }
+</style>
+
+<script src="https://d3js.org/d3.v5.min.js"></script>
+<script src="TX_covid_19_data.js"></script>
+<script>
+function fpageresize() {
+   var md = document.getElementById('svgdiv');
+   var mt = document.getElementById('title');
+   var sd = document.getElementById('seldiv');
+   var dd = document.getElementById('datadiv');
+   md.style.width=(window.innerWidth-sd.offsetWidth)+'px';
+   md.style.left=sd.offsetWidth+'px';
+   mt.style.left=sd.offsetWidth+((window.innerWidth-sd.offsetWidth)/2)-(mt.offsetWidth/2)+'px';
+   dd.style.height=(window.innerHeight-sd.offsetHeight-20)+'px';
+   dd.style.top=sd.offsetHeight+'px'
+};
+</script>
+</head>
+
+<!--//<body onresize="fpageresize();">//-->
+<body>
+<div id="seldiv">
+<h2>Texas Covid-19 Time Series Scatterplot (in Development)</h2>
+<form>
+X Dataset: <select name="dataset_x" id="dataset_x"></select><br />
+Y Dataset: <select name="dataset_y" id="dataset_y"></select><br />
+Data Point: 
+   <a title="first" href="javascript:fchangept(-2);">⏮</a><a title="previous" href="javascript:fchangept(-1);">◀</a><select name="datapt" id="datapt" onchange="fdatapt();"></select><a title="next" href="javascript:fchangept(1);">▶</a><a title="last" href="javascript:fchangept(2);">⏭</a><br />
+Animate: <input type="checkbox" name="animate" id="animate" checked onchange="fdatapt();" />
+Loop: <input type="checkbox" name="animloop" id="animloop" onchange="fdatapt();" />
+Speed:
+   <select name="animspeed" id="animspeed" onchange="fdatapt();">
+      <option value='500'>Fast (0.5s)</option>
+      <option value='1000' selected>Normal (1s)</option>
+      <option value='3000'>Slow (3s)</option>
+   </select>
+</form>
+</div>
+<div id="datadiv"></div>
+<div id="svgdiv"></div>
+<div id="title"></div>
+
+<script>
+function faddelem(etype,eparent=null,eclass=null,eid=null,ehtml=null,etext=null) {
+   var eobj = document.createElement(etype);
+   if (eclass!==null) { eobj.classList = eclass };
+   if (eid!==null) { eobj.id = eid };
+   if (ehtml!==null) { eobj.innerHTML = ehtml };
+   if (etext!==null) { eobj.innerText = etext };
+   if (eparent!==null) { eparent.appendChild(eobj); };
+   return eobj;
+};
+var aryset = [
+   {name:'Population',code:'pop',dataset:population,shortname:'Population'},
+   {name:'Active Cases',code:'ac',dataset:active_cases,shortname:'Cases'},
+   {name:'Cumulative Cases',code:'cc',dataset:cumulative_cases,shortname:'Cases'},
+   {name:'Cumulative Fatalities',code:'cf',dataset:cumulative_fatalities,shortname:'Deaths'},
+];
+//function fgetdatasetobj(code=fgetdataset()) {
+function fgetdatasetobj(code) {
+   var obj = aryset.find(o=>o.code===code);
+   return obj;
+};
+function fcalcttl(set) {
+   var length = set.dates?set.dates.length:-1;
+   //if (!length || set.Totals || set.Total) { return false; };
+   if (!length) { return false; };
+   var ttla=[];
+   var ttl=0;
+   for (p in set) {
+      if (p==='dates') { }
+      else if (['TOTAL','TOTALS'].includes(p.toUpperCase())) { delete set[p]; } // this delete could be removed, if desired
+      else if (length>=0) { ttl+=set[p]; }
+      else {
+         for (i=0;i<length;i++) {
+            if (ttla.length-1 < i) { ttla.push(set[p][i]); }
+            else { ttla[i]+=set[p][i]; };
+         };
+      };
+   };
+   set['totals']=(length>=0)?ttla:ttl;
+};
+function fdatasetlist(nodeid,defaultcode=null) {
+   var list = document.getElementById(nodeid);
+   while (list.firstChild) { list.removeChild(list.lastChild); };
+   for (i=0;i<aryset.length;i++) {
+      var n = document.createElement("option");
+      n.value = aryset[i].code;
+      n.innerHTML = aryset[i].name;
+      list.appendChild(n);
+      if (defaultcode===aryset[i].code) { n.selected=true; };
+   };
+   list.addEventListener('change',function() {fdataset();});
+   return list;
+};
+
+for (a=0;a<aryset.length;a++) { fcalcttl(aryset[a].dataset); };
+var dsref = { x:'dataset_x', y:'dataset_y' };
+var dslist = { x:fdatasetlist(dsref.x,'ac'), y:fdatasetlist(dsref.y,'cc') };
+function fgetdscode(xy) { return dslist[xy].value; };
+function fgetdsname(xy) { return dslist[xy].options.item(dslist[xy].options.selectedIndex).innerText; };
+
+var datasetall = [];
+var dataset = [];
+//var i = 0;
+var animthread = 0;
+
+function fdataset(datapt=true) {
+   var xcode = fgetdscode('x');
+   var ycode = fgetdscode('y');
+   x = fgetdatasetobj(xcode).dataset;
+   y = fgetdatasetobj(ycode).dataset;
+   a = [];
+   if (!x.dates && !y.dates) {
+      var nd = new Date();
+      var d = nd.toISOString().split('T')[0];
+      var c = [];
+      for (p in x) {
+         if (p.toUpperCase().search('TOTAL')<0) { c.push({county:p,x:x[p],y:y[p]}); };
+      };
+      a.push({date:d,data:c});
+   }
+   else if (!x.dates) {
+      for (yi=0;yi<y.dates.length;yi++) {
+         var c = [];
+         for (p in y) {
+            if (p!=='dates' && p.toUpperCase().search('TOTAL')<0) { c.push({county:p,x:x[p],y:y[p][yi]}); };
+         };
+         a.push({date:y.dates[yi],data:c});
+      };
+   }
+   else if (!y.dates) {
+      for (xi=0;xi<x.dates.length;xi++) {
+         var c = [];
+         for (p in x) {
+            if (p!=='dates' && p.toUpperCase().search('TOTAL')<0) { c.push({county:p,x:x[p][xi],y:y[p]}); };
+         };
+         a.push({date:x.dates[xi],data:c});
+      };
+   }
+   else {
+      var yis=0;
+      for (xi=0;xi<x.dates.length;xi++) {
+         var d = x.dates[xi];
+         for (yi=(yis||0);yi<y.dates.length;yi++) {
+            if (d===y.dates[yi]) {
+               var c = [];
+               for (p in x) {
+                  if (p!=='dates' && p.toUpperCase().search('TOTAL')<0) { c.push({county:p,x:x[p][xi],y:y[p][yi]}); };
+               };
+               a.push({date:d,data:c});
+               yis=yi+1;
+               break;
+            };
+         };
+      };
+   };
+   datasetall = a;
+   dataset = datasetall[0].data;
+
+   var list = document.getElementById("datapt");
+   while (list.firstChild) { list.removeChild(list.lastChild); };
+   for (i=0;i<datasetall.length;i++) {
+      var n = document.createElement("option");
+      n.value = datasetall[i].data;
+      n.innerHTML = datasetall[i].date;
+      list.appendChild(n);
+   };
+
+   if (datapt) { fdatapt(); };
+};
+
+function fgetdatapt() { return document.getElementById('datapt').options.selectedIndex; };
+function fgetdataptmax() { return document.getElementById('datapt').options.length-1; };
+function fgetdataptvalue() { return document.getElementById('datapt').value; };
+function fsetdatapt(idx) {
+   var idxmax = fgetdataptmax();
+   if (idx<=0 || idxmax<=0) { idx=0; }
+   else if (idx>idxmax) { idx = document.getElementById('animloop').checked ? 0 : idxmax }; 
+   return document.getElementById('datapt').options.selectedIndex=idx;
+};
+function fchangept(option) {
+   animthread++;
+   if (option===-2) { fsetdatapt(0); }
+   else if (option===2) { fsetdatapt(fgetdataptmax()); }
+   else if (option===-1) {
+      var idx = fgetdatapt()-1;
+      if (idx<0) { idx++; }
+      fsetdatapt(idx);
+   }
+   else if (option===1) {
+      var idx = fgetdatapt()+1;
+      if (idx>fgetdataptmax()) { idx--; }
+      fsetdatapt(idx);
+   }
+   fdatapt();
+};
+
+function fgetdelay() {
+   var animate = document.getElementById('animate').checked;
+   if (!animate) {return -1;};
+   var aloop = document.getElementById('animloop').checked;
+   if (!aloop && (fgetdatapt()===fgetdataptmax())) {return -1;};
+   return document.getElementById('animspeed').value;
+};
+function fdelay(time,value) {
+   return new Promise(function(resolve) { 
+       setTimeout(resolve.bind(null, value), time)
+       //console.log('Pausing '+time+'ms...')
+   });
+};
+async function fdatapt(plot=true) {
+   animthread++;
+   //document.getElementById("title").innerHTML = '<span id="titledate">'+fgetdataptvalue()+'</span><br />'+fgetdatasetname()+(fisdatasets(['cfr','acc'])?'':('<br />'+fgetdatavizname()));
+   var idx=fgetdatapt();
+   var delay = fgetdelay();
+   var duration = (delay>0&&delay<1000)?delay:1000;
+   if (plot) {
+//      i++;
+//      var set = fgetdatasetobj();
+//      dataset=fgetdataptvalue();
+      dataset=datasetall[idx].data;
+      scale.x.domain([0,d3.max(dataset, function(d) { return d.x; })]).nice();
+      scale.y.domain([0,d3.max(dataset, function(d) { return d.y; })]).nice();
+      svg.selectAll("circle")
+         .data(dataset)
+         .transition()
+         .duration(duration)
+         .attr("cx", function(d) { return scale.x(d.x); })
+         .attr("cy", function(d) { return scale.y(d.y); })
+      svg.selectAll("text")
+         .data(dataset)
+         .transition()
+         .duration(duration)
+         .attr("x", function(d) { return scale.x(d.x)+3; })
+         .attr("y", function(d) { return scale.y(d.y)-3; })
+      svg.select(".x_axis")
+         .transition()
+         .duration(duration)
+         .call(d3.axisBottom(scale.x));
+      svg.select(".y_axis")
+         .transition()
+         .duration(duration)
+         .call(d3.axisLeft(scale.y));
+   };
+   fdatatable(dataset);
+   if (delay>0) {
+      var at = animthread;
+      await fdelay(delay);
+      if (at===animthread) {
+         fsetdatapt(idx+1);
+         fdatapt();
+      };
+   };
+};
+
+fdataset(false);
+fpageresize();
+
+var w = document.getElementById('svgdiv').offsetWidth;
+var h = document.getElementById('svgdiv').offsetHeight;
+var m = {top:5,right:10,bottom:50,left:50};
+
+var scale = {};
+scale.x = d3.scaleLinear()
+   .domain([0,d3.max(dataset, function(d) { return d.x; })]).nice()
+   .range([m.left,w-m.right]);
+scale.y = d3.scaleLinear()
+   .domain([0,d3.max(dataset, function(d) { return d.y; })]).nice()
+   .range([h-m.bottom,m.top]);
+
+var svg = d3.select("#svgdiv")
+   .append("svg")
+   .attr("width", w)
+   .attr("height", h);
+
+/*
+var circle = svg.selectAll("circle")
+   .data(dataset)
+   .enter()
+   .append("circle")
+   .attr("cx", function(d) { return scale.x(d.x); })
+   .attr("cy", function(d) { return scale.y(d.y); })
+   .attr("r", 2)
+   .attr("fill", function(d) { return d.county==="Harris"?"red":"black" })
+*/
+
+var circle = svg.selectAll("g")
+   .data(dataset)
+   .enter()
+   .append("g");
+
+circle.append("circle")
+   .attr("cx", function(d) { return scale.x(d.x); })
+   .attr("cy", function(d) { return scale.y(d.y); })
+   .attr("r", 2.5)
+   .attr("id", function(d) { return "circle_"+(d.county.replace(" ","_")); })
+   .attr("fill", function(d) {
+      return d.county==="Harris"?"red"
+         :["Liberty","Chambers","Galveston","Brazoria","Fort Bend","Waller","Montgomery"].includes(d.county)?"orange"
+         :"rgba(128,128,128,0.5)";
+    })
+   .attr("stroke", function(d) {
+      return d.county==="Harris"?"purple"
+         :["Liberty","Chambers","Galveston","Brazoria","Fort Bend","Waller","Montgomery"].includes(d.county)?"brown"
+         :"black";
+   })
+   .on("mouseover", function() {
+      var id = "#"+this.id.replace("circle","label");
+      d3.select(id)
+      .attr("class","label");
+   })
+   .on("mouseleave", function() {
+      var id = "#"+this.id.replace("circle","label");
+      d3.select(id)
+      .attr("class","label_hide");
+   })
+   .on("click", function() {
+      var id = "#"+this.id.replace("circle","label");
+      d3.select(id)
+      .attr("class","label_sel");
+   });
+
+circle.append("text")
+   .attr("x", function(d) { return scale.x(d.x)+3; })
+   .attr("y", function(d) { return scale.y(d.y)-3; })
+   .attr("class","label_hide")
+   .attr("id",function(d) { return "label_"+(d.county.replace(" ","_")); } )
+   .text(function(d) { return d.county });
+
+svg.append("g")
+   .attr("class", "x_axis")
+   .attr("transform", "translate(0,"+(h-m.bottom)+")")
+   .call(d3.axisBottom(scale.x));
+
+svg.append("g")
+   .attr("class", "y_axis")
+   .attr("transform", "translate("+m.left+",0)")
+   .call(d3.axisLeft(scale.y));
+
+fdatapt(false);
+
+
+// some functions for handling decimals and percents
+function fnopercent(str) { return str.replace(/%/g,''); };
+function fnocomma(str) { return str.replace(/,/g,''); };
+function fcomnum(n) { return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g,',') };
+function fround(num,places) { return num.toFixed(places); };
+
+// functions to sort data in a table
+function fsortbase(columnNo,asc=true,comma=false,percent=false) {
+   if (columnNo > 1) {fsortbase(1);}; // before sorting by any other column, sort by precinct first
+   var tb = document.getElementById('datatbody');
+   var ary = Array.from(tb.children);
+   ary.sort(function(a, b) {
+      var val_a = a.children[columnNo].innerHTML;
+      var val_b = b.children[columnNo].innerHTML;
+      if (comma) {
+         val_a = fnocomma(val_a);
+         val_b = fnocomma(val_b);
+      };
+      if (percent) {
+         val_a = fnopercent(val_a)==='N/A'?-1:fnopercent(val_a);
+         val_b = fnopercent(val_b)==='N/A'?-1:fnopercent(val_b);
+      };
+      if (!isNaN(val_a)&&val_b==='NaN') { return asc?1:-1; }
+      else if (!isNaN(val_b)&&val_a==='NaN') { return asc?-1:1; }
+      else if (isNaN(val_a-val_b)) { return (asc?1:-1) * (val_a>val_b?1:val_a<val_b?-1:0); }
+      else { return asc?(val_a-val_b):(val_b-val_a); };      
+   });
+   ary.forEach(function(ele) {
+      tb.appendChild(ele);
+   });
+};
+function fsortcolumn(headerObject,comma=false,percent=false,defaultasc=null) {
+   var header = headerObject;
+   var hrow = headerObject.parentElement;
+   var columnNo = 0;
+   for (i=1;i<hrow.childNodes.length;i++) { // start at index 1, since index 0 (the color box) is not sortable
+      // first clear any existing sort order indicators
+      var text = hrow.childNodes[i].innerText;
+      var prevSort = text.charAt(text.length-1)==='▴' ? 'asc'
+         : text.charAt(text.length-1)==='▾' ? 'desc'
+         : 'none';
+      if (prevSort!=='none') {
+         text = text.substring(0,text.length-1);
+         hrow.childNodes[i].innerText = text;
+      };
+      // if the column is the one to sort on, then sort it and add a sort order indicator .
+      if (headerObject===hrow.childNodes[i]) {
+         if ((prevSort==='asc'&&defaultasc===null)||(defaultasc===false)) {
+            fsortbase(i,false,comma,percent);
+            text+='▾';
+         }
+         else {
+            fsortbase(i,true,comma,percent);
+            text+='▴';
+         };
+         headerObject.innerText = text;
+      };
+   };
+};
+function fdatatablerow(tbody,cbstyle,county,values) {
+   var brow = faddelem('tr',tbody,null,'tr'+county);
+   var colorbox = faddelem('td',brow,null,null,'&nbsp;');
+   //colorbox.style.background = cbstyle.fillColor;
+   //colorbox.style.opacity = cbstyle.fillOpacity;
+   faddelem('td',brow,null,null,county);
+   for (i=0;i<values.length;i++) {
+      faddelem('td',brow,'tar',null,values[i]);
+   };
+   //brow.addEventListener('mouseover', function() { flayerhighlight(this) } );
+   //brow.addEventListener('mouseout', function() { flayerhighlight(this,false) });
+   //brow.addEventListener('click', function() { flayerpopup(this) });
+};
+function fdatahdrwsort(hrow,eclass=null,eid=null,ehtml=null,comma=false,percent=false,defaultasc=null) {
+   faddelem('th',hrow,eclass,eid,ehtml)
+   .addEventListener('click', function() { fsortcolumn(this,comma,percent,defaultasc) } );
+};
+function fdatatable(odata) {
+   var data = document.getElementById('data');
+   if (data) { data.remove(); };
+   var datadiv = document.getElementById('datadiv');
+   data = faddelem('table',datadiv,null,'data');
+   var thead = faddelem('thead',data);
+   var tbody = faddelem('tbody',data,null,'datatbody');
+   var headerdone = false;
+   for (p=0;p<odata.length;p++) {
+      let county = odata[p];
+      //var pstyle = fpolygonstyle(odata[p]);
+      var pstyle = null;
+      if (!headerdone) {
+         headerdone = true;
+         var hrow = faddelem('tr',thead);
+         faddelem('th',hrow,null,'datahdr_colorbox','');
+         fdatahdrwsort(hrow,null,'datahdr_county','County');
+         fdatahdrwsort(hrow,'tar','datahdr_x',fgetdsname('x'),true);
+         fdatahdrwsort(hrow,'tar','datahdr_y',fgetdsname('y'),true);
+      };
+      fdatatablerow(tbody,pstyle,county.county,[county.x,county.y]);
+   };
+   // do an initial sort based on map type
+   fsortcolumn(document.getElementById('datahdr_county'));
+};
+
+
+
+
+/*
+function flayerhighlight(row,highlight=true) {
+   var pct = row.childNodes[1].innerHTML;
+   for (i in ldatasetlayer._layers) {
+      layer = ldatasetlayer._layers[i];
+      if (layer._polygonId === pct) {
+         if (highlight) {
+            layer.setStyle(polygonstyle.highlight);
+            row.style.background='white';
+         }
+         else {
+            layer.setStyle(polygonstyle.unhighlight);
+            row.style.background='whitesmoke';
+         };
+         break;
+      };
+   };
+};
+function flayerpopup(row) {
+   var pct = row.childNodes[1].innerHTML;
+   for (i in ldatasetlayer._layers) {
+      layer = ldatasetlayer._layers[i];
+      if (layer._polygonId === pct) {
+         layer.openPopup();
+         break;
+      };
+   };
+};
+
+
+function frgb(r,g,b) { return 'rgb('+r+','+g+','+b+')'; };
+function fhsl(h,s,l) { return 'hsl('+h+','+s+'%,'+l+'%)'; };
+function flogbase(val,base) { return Math.log(val) / Math.log(base); };
+function fscale(num,scale,limit=true) {
+   var num = num*scale;
+   if (num>scale) { num=scale }; 
+   return num;
+};
+// define general polygon styling
+var polygonstyle = {
+   default: {
+      fillColor: 'darkgray',
+      weight: 1,
+      opacity: 0.55,
+      color: 'darkgray',
+      fillOpacity: 0.55,
+      smoothFactor: 0.0
+   },
+   highlight: {
+      color: 'cyan',
+      fillOpacity: 0.75
+   },
+   unhighlight: {
+      color: 'darkgray',
+      fillOpacity: 0.55
+   }
+};
+
+function fhslscale(h,s,l,factor,shift,bidirectional=false) {
+   if (bidirectional) {
+      return (factor>0)?fhsl(h-fscale(factor,shift),s,l)
+         :(factor<0)?fhsl(h+fscale(-factor,shift),s,l)
+         :'darkgray'
+   }
+   return fhsl(h-fscale(factor,shift),s,l);
+};
+
+function fpolygonstyle(feature) {
+   let pstyle = polygonstyle.default;
+//   let pareami = feature.properties.ALAND/sqm_per_sqmi;
+   let ppop = feature.properties.pop;
+   let pvalue = feature.properties.value;
+   let pper = pvalue/ppop*1000;
+   let pttl = feature.properties.valuettl;
+   let ppct = pvalue/pttl;
+
+   pstyle.fillColor = (pvalue==null) ? 'none'
+      :(isNaN(ppct))?'darkgray'
+      :fisdataset('cfr')?fhslscale(60,100,50,(ppct*5),120)
+      :fisdataset('acc')?fhslscale(60,100,50,ppct,120)
+      :(pvalue===0)?'darkgray'
+      :fisdataviz('per')?
+         (fisdataset('cc')?fhslscale(60,100,50,(pper/30),120)
+         :fisdataset('ac')?fhslscale(60,100,50,(pper/30),120)
+         :fisdataset('cf')?fhslscale(60,100,50,pper,120)
+         :fisdataset('cc_d')?fhslscale(60,100,50,(pper/5),120)
+         :fisdataset('ac_d')?fhslscale(60,100,50,(pper/2),120)
+         :fisdataset('cf_d')?fhslscale(60,100,50,pper*2,120)
+         :'purple')
+//      :fisdataviz('psm')? // pvalue/pareami
+      :fisdataviz('lin')?
+         (fisdataset('cc')?fhslscale(60,100,50,(pvalue/15000),120)
+         :fisdataset('ac')?fhslscale(60,100,50,(pvalue/15000),120)
+         :fisdataset('cf')?fhslscale(60,100,50,(pvalue/250),120)
+         :fisdataset('cc_d')?fhslscale(60,100,50,(pvalue/500),120)
+         :fisdataset('ac_d')?fhslscale(60,100,50,(pvalue/500),120)
+         :fisdataset('cf_d')?fhslscale(60,100,50,(pvalue/20),120)
+         :'purple')
+      :fisdataviz('pct')?fhslscale(60,100,50,(ppct*3),120,true)
+      :'purple';
+   return pstyle;
+};.
+
+function fgetpop(gobj,dobj) {
+   for(i=0;i<gobj.length;i++) {
+      delete gobj[i].properties.pop;
+      gobj[i].properties['pop']=dobj[gobj[i].properties.NAME];
+   }
+   return gobj;
+};
+
+function faddchangeset() {
+   const l = aryset.length;
+   for (i=0;i<l;i++) {
+      var d = {}; // destination
+      var s = aryset[i].dataset; // source
+      for (p in s) {
+         d[p]=[];
+         for (j=1;j<s[p].length;j++) {
+            if (p==='dates') { d[p].push( s[p][j-1]+' to '+s[p][j] ) }
+            else { d[p].push( s[p][j]-s[p][j-1] ) };
+         };
+      };
+      aryset.push({
+         name:aryset[i].name+' &Delta;',
+         code:aryset[i].code+'_d',
+          dataset:d,
+         shortname:aryset[i].shortname+' &Delta;',
+         selected:false,
+         vizoptions:aryset[i].vizoptions,
+      });
+   };
+};
+function faddcalcset(num,den,code,name,shortnm) {
+   f = fgetdatasetobj(num).dataset;
+   c = fgetdatasetobj(den).dataset;
+   var cis=0;
+   var a = {};
+   for (fi=0;fi<f.dates.length;fi++) {
+      var d = f.dates[fi];
+      for (ci=(cis||0);ci<c.dates.length;ci++) {
+         if (d===c.dates[ci]) {
+            if (cis===0) { // first time
+               for (p in f) { a[p] = []; };
+            };
+            for (q in f) {
+               if (q==='dates') { a[q].push(f[q][fi]); }
+               else { a[q].push([f[q][fi],c[q][ci]]); };
+            };
+            cis=ci+1;
+            break;
+         };
+      };
+   };
+   if (a.dates) {
+      aryset.push({
+         name:name,
+         code:code,
+         dataset:a,
+         shortname:shortnm,
+         selected:false,
+         vizoptions:false,
+      });
+   };
+};
+
+function fgetdataset() { return document.getElementById('dataset').value; };
+function fgetdatasetname() { return document.getElementById('dataset').options.item(document.getElementById('dataset').options.selectedIndex).innerText; };
+function fgetdataviz() { return document.getElementById('dataviz').value; };
+function fgetdatavizname() { return document.getElementById('dataviz').options.item(document.getElementById('dataviz').options.selectedIndex).innerText; };
+
+function fisdataset(set) { return fgetdataset()===set; };
+function fisdatasets(typeary) { return typeary.includes(fgetdataset()); };
+function fisdataviz(type) { return fgetdataviz()===type; };
+
+var ldatasetlayer;
+
+fpageresize();
+var animthread = 0;
+mainmap.fitBounds([[36.500704,-93.508039],[25.837164,-106.645646]]);
+fgetpop(cb_2018_TX_county_500k.features,population);
+for (a=0;a<aryset.length;a++) { fcalcttl(aryset[a].dataset); };
+faddchangeset();
+faddcalcset('cf','cc','cfr','Case Fatality Rate','CFR');
+faddcalcset('ac','cc','acc','Active to Cum. Cases','A/C');
+fdatasetlist();
+fdataset();
+*/
+
+</script>
+
+</body>
+</html>
